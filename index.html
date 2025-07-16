@@ -8,9 +8,8 @@
     <title>RSSテロップ表示ツール</title>
     <!-- PWA (Progressive Web App) 対応のための設定 -->
     <meta name="theme-color" content="#007bff"/>
-    <link rel="manifest" href="./manifest.json">
     <!-- ブラウザタブ用の動的アイコン -->
-    <link id="favicon" rel="icon" type="image/svg+xml" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect x="20" y="10" width="25" height="80" fill="gray"/><rect x="55" y="10" width="25" height="80" fill="gray"/></svg>'>
+    <link id="favicon" rel="icon" type="image/png" sizes="192x192" href="icons/icon-192x192.png">
     <style>
         body {
             margin: 0;
@@ -19,9 +18,10 @@
             background-color: #f5f5f5; /* 背景色を追加 */
         }
 
+        /* テロップの位置 */
         #ticker-container {
             position: fixed;
-            bottom: 0;
+            bottom: 0; /* デフォルトは下 */
             left: 0;
             width: 100%;
             overflow: hidden;
@@ -29,9 +29,10 @@
             box-sizing: border-box;
             background-color: #ffffff; /* デフォルトのテロップ背景色 */
             color: #222222; /* デフォルトのテロップ文字色 */
-            padding: 5px 0; /* 上下パディングを追加 */
-            z-index: 999; /* 他の要素の上に表示 */
-            border-top: 1px solid #ddd;
+            padding: 5px 0;
+            z-index: 999;
+            border-top: 1px solid #ddd; /* 下にある時の境界線 */
+            border-bottom: none; /* 上にある時のためにリセット */
         }
 
         #ticker-text {
@@ -42,9 +43,10 @@
             padding-left: 100%; /* 初期表示を画面外からにする */
         }
 
+
         @keyframes scroll-left {
-            0% { transform: translateX(0%); }
-            100% { transform: translateX(-100%); }
+            0% { transform: translate3d(0, 0, 0); }
+            100% { transform: translate3d(-100%, 0, 0); }
         }
 
         #controller {
@@ -57,11 +59,11 @@
             background: #f0f0f0;
             border: 1px solid #ccc;
             border-radius: 8px;
-            padding: 15px;
+            padding: 1rem;
             box-shadow: 0 4px 8px rgba(0,0,0,0.2);
             z-index: 1000; /* テロップの上に表示 */
             resize: both; /* リサイズを許可 */
-            overflow: auto; /* 内容がはみ出したらスクロールバー */
+            overflow: auto;
             display: block; /* デフォルトで表示 */
             font-size: 14px; /* ベースのフォントサイズ (JSで動的に変更) */
             box-sizing: border-box;
@@ -73,7 +75,7 @@
 
         #controller h3 {
             margin-top: 0;
-            font-size: 1.2em; /* 相対単位 */
+            font-size: 1.2em;
             color: #333;
             border-bottom: 1px solid #eee;
             padding-bottom: 10px;
@@ -84,7 +86,7 @@
             display: block;
             margin-bottom: 5px;
             font-weight: bold;
-            color: #555;
+            color: #555;   
             font-size: 1em; /* 相対単位 */
         }
 
@@ -175,7 +177,7 @@
             width: 100%;
             height: 100%;
             overflow: auto; /* 内容がはみ出したらスクロール可能に */
-            background-color: rgba(0,0,0,0.7); /* 半透明の黒い背景 */
+            background-color: rgba(0,0,0,0.7);
             justify-content: center;
             align-items: center;
         }
@@ -255,6 +257,12 @@
             <button id="speech-off-btn">🔇 読み上げOFF</button>
         </div>
 
+        <div class="button-group">
+            <label for="toggle-sakura-checkbox"><input type="checkbox" id="toggle-sakura-checkbox"> 🌸 絵文字表示</label>
+        </div>
+
+
+
         <label for="speech-rate-slider">読み上げ速度:</label>
         <input type="range" id="speech-rate-slider" min="0.5" max="2" step="0.1" value="1">
         <p style="font-size: 0.8em; color: #666; margin-top: -8px; margin-bottom: 10px;">0.5 (遅い) 〜 2.0 (速い)</p>
@@ -284,7 +292,7 @@
 
 
         <label for="size-slider">文字サイズ:</label>
-        <input type="range" id="size-slider" min="12" max="120" value="32">
+        <input type="range" id="size-slider" min="12" max="360" value="32">
 
         <label for="font-select">フォント:</label>
         <select id="font-select">
@@ -307,6 +315,19 @@
         <input type="color" id="bg-color-picker" value="#ffffff">
 
         <div class="preview-text">プレビューテキスト</div>
+        
+        <div style="margin-top: 15px;">
+            <label>テロップの位置:</label><br>
+            <input type="radio" id="position-top" name="ticker-position" value="top">
+            <label for="position-top">上</label>
+            <input type="radio" id="position-middle" name="ticker-position" value="middle">
+            <label for="position-middle">中央</label>
+            <input type="radio" id="position-bottom" name="ticker-position" value="bottom" checked>
+            <label for="position-bottom">下</label>
+        </div>
+
+        <label for="window-bg-color-picker">ウィンドウ背景色:</label>
+        <input type="color" id="window-bg-color-picker" value="#f5f5f5">
 
         <button id="reset-settings-btn" style="margin-top: 15px;">設定初期化</button>
     </div>
@@ -328,6 +349,7 @@
                 <li>「🔊 読み上げON」ボタンでテロップの内容を音声で読み上げます。**テロップのスクロールに合わせて、自動で読み上げのタイミングが調整されます。**</li>
                 <li>「🔇 読み上げOFF」ボタンで読み上げを停止します。</li>
                 <li>「**読み上げ速度**」スライダーで、読み上げの速さを調整できます。</li>
+                <li>「**読み上げのピッチ**」スライダーで、音声の高さを調整できます。</li>
                 <li>**テロップの再生・一時停止と連動して、読み上げも一時停止・再開されます。**</li>
             </ul>
 
@@ -348,7 +370,7 @@
             <h4>5. RSSフィードの表示</h4>
             <ul>
                 <li>「RSSフィードURL」のテキストエリアに、表示したいRSSフィードのURLを入力します。複数ある場合は、カンマ (`,`) またはスペースで区切ってください。</li>
-                <li>「RSSを読み込む」ボタンをクリックすると、入力されたRSSフィードから最新のニュースが取得され、テロップとして表示されます。自動更新が開始されます。</li>
+                <li>「RSSを読み込む」ボタンをクリックすると、入力されたRSSフィードから最新のニュースが取得され、テロップとして表示されます。初期状態で自動更新が開始されます。</li>
                 <li>「RSS自動更新停止」ボタンをクリックすると、RSSフィードの自動更新が止まり、手動入力が可能になります。</li>
                 <li>**RSSの自動更新は、現在のテロップが画面を一周するたびに行われます。**</li>
                 <li>**ヒント**: 読み込みを安定させるため、遅いサイトや頻繁にエラーが出るサイトは、他のRSSフィードとは分けて入力するか、手動入力を検討してください。</li>
@@ -375,6 +397,7 @@
                 <li>「文字の太さ」スライダーで、テロップの文字の太さを調整できます。</li>
                 <li>「文字色」カラーピッカーで、テロップの文字の色を変更できます。</li>
                 <li>「背景色」カラーピッカーで、テロップの背景の色を変更できます。</li>
+                <li>「テロップの位置」で、テロップを画面の上・中央・下に配置できます。</li>
             </ul>
 
             <h4>9. 設定の初期化・保存・表示/非表示</h4>
@@ -388,7 +411,7 @@
     </div>
 
     <script>
-        // Google Apps Script (GAS) プロキシのURL
+       // Google Apps Script (GAS) プロキシのURL
         const GAS_PROXY_URL = 'https://script.google.com/macros/s/AKfycbzrvWwKI8q5InEHJaR1qKWGeJlZzHjRc2RUxdBvHmU9Raxl_FjM-kgOC1MyjGcgRs6M/exec';
 
         // ブラウザタブ用の動的アイコン (Data URL)
@@ -426,6 +449,9 @@
         const resetSettingsBtn = document.getElementById('reset-settings-btn');
         const manualBtn = document.getElementById('manual-btn');
         const manualModal = document.getElementById('manual-modal');
+        const positionRadios = document.querySelectorAll('input[name="ticker-position"]');
+        const windowBgColorPicker = document.getElementById('window-bg-color-picker');
+        const toggleSakuraBtn = document.getElementById('toggle-sakura-btn');
         const closeButton = manualModal.querySelector('.close-button');
 
         // 状態変数
@@ -437,6 +463,9 @@
         let currentTextColor = textColorPicker.value;
         let currentBgColor = bgColorPicker.value;
         let currentSpeechRate = parseFloat(speechRateSlider.value);
+        let currentPosition = 'bottom';
+        let currentWindowBgColor = windowBgColorPicker.value;
+        let areSakuraEmojisEnabled = false; // 初期状態: 絵文字を非表示        
 
         let isRssAutoUpdating = false;
         let isTickerPaused = false;
@@ -447,7 +476,38 @@
 
         // テキスト分割用の正規表現（RSSタイトルや手動入力の区切りに使う）
         // 🌸【...】🌸 のような形式や、 ◇ を区切りとする
-        const TEXT_SPLIT_REGEX = /(🌸【[^】]+】🌸|◇)/g;
+        let TEXT_SPLIT_REGEX = /(🌸【[^】]+】🌸|◇)/g;
+
+        /**
+         * @param {string} position - 'top', 'middle', 'bottom' のいずれか
+         */
+        function updateTickerPosition(position) {
+            // スタイルを一旦リセット
+            tickerContainer.style.top = 'auto';
+            tickerContainer.style.bottom = 'auto';
+            tickerContainer.style.transform = '';
+            tickerContainer.style.borderTop = 'none';
+            tickerContainer.style.borderBottom = 'none';
+
+            switch(position) {
+                case 'top':
+                    tickerContainer.style.top = '0';
+                    tickerContainer.style.borderBottom = '1px solid #ddd';
+                    break;
+                case 'middle':
+                    tickerContainer.style.top = '50%';
+                    tickerContainer.style.transform = 'translateY(-50%)';
+                    tickerContainer.style.borderTop = '1px solid #ddd';
+                    tickerContainer.style.borderBottom = '1px solid #ddd';
+                    break;
+                case 'bottom':
+                default:
+                    tickerContainer.style.bottom = '0';
+                    tickerContainer.style.borderTop = '1px solid #ddd';
+                    break;
+            }
+            currentPosition = position;
+        }
 
         /**
          * コントローラーのフォントサイズを更新する関数。
@@ -482,6 +542,7 @@
             tickerText.style.color = currentTextColor;
             tickerContainer.style.backgroundColor = currentBgColor;
 
+
             tickerText.textContent = currentText;
 
             previewText.style.fontSize = `${currentSize}px`;
@@ -492,32 +553,50 @@
             previewText.textContent = `サイズ: ${currentSize}px, 速度: ${currentSpeed}, 書体: ${currentFont}, 太さ: ${currentWeight}`;
 
             if (resetAnimation) {
-                tickerText.style.animation = 'none';
-                tickerText.style.transform = 'translateX(0%)';
-                void tickerText.offsetWidth;
-            } else {
-                tickerText.style.animation = 'none';
-                void tickerText.offsetWidth;
+                tickerText.style.transform = 'translate3d(0, 0, 0)';
+                tickerText.style.animation = ''; // アニメーションをリセット
             }
+            applyTickerAnimation();
+        }
+
+        /**
+         * 絵文字の表示/非表示を切り替える関数
+         */
+        function toggleSakuraEmojis() {
+            areSakuraEmojisEnabled = !areSakuraEmojisEnabled;
+
+            // 正規表現を更新
+            TEXT_SPLIT_REGEX = areSakuraEmojisEnabled ? /(🌸【[^】]+】🌸|◇)/g : /(【[^】]+】|◇)/g;
+
+            // テキストを再処理してテロップを更新
+            currentText = tickerInput.value; // 現在の入力テキストを再取得
+            tickerInput.value = processTextForEmojis(currentText); // 入力欄も更新
+            currentText = processTextForEmojis(currentText);
+            updateTicker(true);
+        }
+
+        /**
+         * テロップのアニメーションを適用する
+         */
+        function applyTickerAnimation() {
+            const basePixelsPerSecond = 80; // 基本速度を調整
 
             const tickerTextWidth = tickerText.scrollWidth;
             const viewportWidth = window.innerWidth;
 
-            const basePixelsPerSecond = 100; 
-
             let speedMultiplier;
             if (currentSpeed >= 0) {
-                speedMultiplier = 1 + (currentSpeed / 1000); 
+                speedMultiplier = 1 + (currentSpeed / 1000);
             } else {
-                speedMultiplier = 1 + (currentSpeed / 2000); 
+                speedMultiplier = 1 + (currentSpeed / 2000);
             }
             speedMultiplier = Math.max(0.1, speedMultiplier);
 
             const distanceToScroll = tickerTextWidth + viewportWidth;
             let animationDuration = distanceToScroll / (basePixelsPerSecond * speedMultiplier);
 
-            animationDuration = Math.max(1, animationDuration);
-            animationDuration = Math.min(6000, animationDuration);
+            // アニメーション速度の制限
+            console.log("animationDuration",animationDuration);
 
             tickerText.style.animation = `scroll-left ${animationDuration}s linear infinite`;
             tickerText.style.animationPlayState = isTickerPaused ? 'paused' : 'running';
@@ -525,9 +604,8 @@
             // アニメーションの再開時に読み上げをリセット・開始
             if (!isTickerPaused) {
                 // 新しいテキストの場合、または再開時に読み上げを最初から開始する場合
-                startSpeechSync();
+                syncSpeechWithAnimation();
             } else {
-                // 停止時は読み上げも停止
                 stopSpeech();
             }
         }
@@ -632,6 +710,31 @@
         }
 
         /**
+         * テキストから絵文字を削除または追加する
+         * @param {string} text - 処理するテキスト
+         * @returns {string} - 処理後のテキスト
+         */
+        function processTextForEmojis(text) {
+            if (areSakuraEmojisEnabled) {
+                // 絵文字が削除されている場合は追加
+                return text.replace(/(【[^】]+】)/g, '🌸$1🌸');
+            } else {
+                // 絵文字を削除
+                return text.replace(/🌸/g, '');
+            }
+        }
+
+        /**
+         * 入力テキストエリアの内容を処理する
+         */
+        function processInputText(text) {
+            if (!areSakuraEmojisEnabled) {
+                return text.replace(/🌸/g, ''); // 絵文字を削除
+            }
+            return text;
+        }
+
+        /**
          * RSS自動更新を開始する関数。
          */
         function startRssAutoUpdates() {
@@ -641,7 +744,6 @@
             loadRssButton.disabled = true;
             loadRssButton.textContent = 'RSS自動更新中';
             stopRssButton.disabled = false;
-            tickerInput.disabled = true;
             console.log("RSS自動更新が有効になりました。");
         }
 
@@ -656,7 +758,6 @@
             loadRssButton.disabled = false;
             loadRssButton.textContent = 'RSSを読み込む';
             stopRssButton.disabled = true;
-            tickerInput.disabled = false;
             alert('RSSフィードの自動更新を停止しました。');
             console.log("RSS自動更新が停止しました。");
         }
@@ -671,7 +772,7 @@
 
             tickerText.animation_iteration_listener = () => {
                 if (isRssAutoUpdating) {
-                    console.log("animationiteration検出：テロップが一周しました。次のRSS更新を実行します。");
+                    //console.log("animationiteration検出：テロップが一周しました。次のRSS更新を実行します。");
                     fetchAndDisplayMultipleRss(false, true);
                 }
             };
@@ -679,8 +780,6 @@
         }
 
         setupAnimationIterationListener();
-
-
         // --- 音声読み上げ同期機能 ---
         let animationFrameId = null; // requestAnimationFrame ID
         const VOICE_VOLUME = 1.0; // 読み上げ音量
@@ -695,6 +794,7 @@
             speakingIndex = 0;
             // 🌸【...】🌸 または ◇ で分割
             const parts = text.split(TEXT_SPLIT_REGEX).filter(s => s.trim() !== '');
+            console.log("text",text);
 
             // 空の文字列やスペースのみの文字列を除外してキューに格納
             parts.forEach(part => {
@@ -729,7 +829,7 @@
             currentUtterance.volume = VOICE_VOLUME;
 
             currentUtterance.onend = () => {
-                console.log(`Finished speaking: "${text}"`);
+                //console.log(`Finished speaking: "${text}"`);
                 currentUtterance = null;
                 // 必要に応じて次のテキストをキューから取り出すロジックを追加
             };
@@ -738,13 +838,13 @@
             };
 
             window.speechSynthesis.speak(currentUtterance);
-            console.log(`Speaking: "${text}"`);
+            //console.log(`Speaking: "${text}"`);
         }
 
         /**
          * 読み上げの同期を開始する
          */
-        function startSpeechSync() {
+        function syncSpeechWithAnimation() {
             if (!isSpeechOn || isTickerPaused) {
                 stopSpeech(); // 読み上げOFFまたは一時停止中なら停止
                 return;
@@ -772,7 +872,7 @@
 
                 // テキスト要素がまだ存在しない、またはCSSアニメーションがまだ開始されていない場合
                 if (!tickerText || getComputedStyle(tickerText).animationPlayState === 'paused') {
-                    animationFrameId = requestAnimationFrame(animateSpeech); // 次のフレームで再試行
+                     animationFrameId = requestAnimationFrame(animateSpeech); // 次のフレームで再試行
                     return;
                 }
 
@@ -780,7 +880,7 @@
                 // currentTransformが'none'の場合、またはまだtranslateXが適用されていない場合はスキップ
                 if (currentTransform === 'none' || !currentTransform.includes('matrix(')) {
                      animationFrameId = requestAnimationFrame(animateSpeech);
-                     return;
+                    return;
                 }
 
                 // translateXの値を取得
@@ -830,7 +930,7 @@
                     }
                 }, 100); // 少し遅延させて、テロップが画面外に出るのを待つ
             }
-        }
+        }        
 
         /**
          * 読み上げを停止する
@@ -856,14 +956,15 @@
         stopRssButton.addEventListener('click', stopRssUpdates);
 
         tickerInput.addEventListener('input', (e) => {
-            if (!isRssAutoUpdating) {
-                currentText = e.target.value;
-                updateTicker(true);
-            } else {
-                alert('RSS自動更新中は手動入力できません。自動更新を停止してください。');
-                e.target.value = currentText;
-            }
-        });
+                if (!isRssAutoUpdating) {
+                    currentText = processInputText(e.target.value); // 入力テキストを処理
+                    updateTicker(true);
+                } else {
+                    alert('RSS自動更新中は手動入力できません。自動更新を停止してください。');
+                    e.target.value = areSakuraEmojisEnabled ? currentText : currentText.replace(/🌸/g, '');
+
+                }
+            });
 
         speedInput.addEventListener('input', (e) => {
             currentSpeed = parseInt(e.target.value) || 0;
@@ -902,6 +1003,19 @@
             saveSettings();
         });
 
+        positionRadios.forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                updateTickerPosition(e.target.value);
+                saveSettings();
+            });
+        });
+
+        windowBgColorPicker.addEventListener('input', (e) => {
+            document.body.style.backgroundColor = e.target.value;
+            currentWindowBgColor = e.target.value;
+            saveSettings();
+        });
+
         speechRateSlider.addEventListener('input', (e) => {
             currentSpeechRate = parseFloat(e.target.value);
             if (currentUtterance) { // 読み上げ中の場合は、速度を即座に反映
@@ -930,8 +1044,11 @@
                 controllerWidth: controller.style.width,
                 controllerHeight: controller.style.height,
                 isControllerVisible: controllerVisible,
-                isRssAutoUpdating: isRssAutoUpdating,
-                speechRate: currentSpeechRate
+                isRssAutoUpdating: isRssAutoUpdating,                areSakuraEmojisEnabled: areSakuraEmojisEnabled,
+
+                speechRate: currentSpeechRate,
+                tickerPosition: currentPosition,
+                windowBgColor: currentWindowBgColor
             };
             localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
         }
@@ -952,6 +1069,8 @@
             bgColorPicker.value = settings.bgColor;
             rssUrlInput.value = settings.rssUrl;
             speechRateSlider.value = settings.speechRate !== undefined ? settings.speechRate : 1;
+            areSakuraEmojisEnabled = settings.areSakuraEmojisEnabled !== undefined ? settings.areSakuraEmojisEnabled : false;
+            windowBgColorPicker.value = settings.windowBgColor || '#f5f5f5';
 
             currentSpeed = settings.speed;
             currentSize = settings.size;
@@ -962,6 +1081,16 @@
             currentBgColor = settings.bgColor;
             tickerContainer.style.backgroundColor = currentBgColor;
             currentSpeechRate = parseFloat(speechRateSlider.value);
+            currentWindowBgColor = windowBgColorPicker.value;
+
+            document.body.style.backgroundColor = currentWindowBgColor;
+
+            const savedPosition = settings.tickerPosition || 'bottom';
+            const checkedRadio = document.querySelector(`input[name="ticker-position"][value="${savedPosition}"]`);
+            if (checkedRadio) {
+                checkedRadio.checked = true;
+            }
+            updateTickerPosition(savedPosition);
 
             let savedLeft = parseFloat(settings.controllerLeft) || 20;
             let savedTop = parseFloat(settings.controllerTop) || 20;
@@ -1006,6 +1135,7 @@
             bgColorPicker.value = '#ffffff';
             rssUrlInput.value = '';
             speechRateSlider.value = 1;
+            windowBgColorPicker.value = '#f5f5f5';
 
             currentSpeed = 0;
             currentSize = 32;
@@ -1016,6 +1146,11 @@
             currentBgColor = '#ffffff';
             tickerContainer.style.backgroundColor = currentBgColor;
             currentSpeechRate = 1;
+            currentWindowBgColor = '#f5f5f5';
+            document.body.style.backgroundColor = currentWindowBgColor;
+
+            updateTickerPosition('bottom');
+            document.querySelector('input[name="ticker-position"][value="bottom"]').checked = true;
 
             controller.style.left = '20px';
             controller.style.top = '20px';
@@ -1027,8 +1162,10 @@
             controller.style.display = 'block';
 
             // ブラウザタブ用アイコンを初期状態に戻す
+            toggleSakuraEmojis(); // 絵文字を初期状態で非表示にする
             document.getElementById('favicon').href = PAUSE_ICON_DATA_URL;
 
+            applyTickerAnimation();
             stopRssUpdates();
             updateTicker(true);
             stopSpeech(); // 初期化時に読み上げも停止
@@ -1160,7 +1297,7 @@
         speechOnBtn.addEventListener('click', () => {
             isSpeechOn = true;
             if (!isTickerPaused) {
-                startSpeechSync(); // 読み上げ開始
+                syncSpeechWithAnimation();
             }
         });
 
@@ -1169,16 +1306,24 @@
             stopSpeech(); // 読み上げ停止
         });
 
+        const toggleSakuraCheckbox = document.getElementById('toggle-sakura-checkbox');
+        toggleSakuraCheckbox.checked = areSakuraEmojisEnabled; // 初期状態をチェックボックスに反映
+        toggleSakuraCheckbox.addEventListener('change', () => {
+            areSakuraEmojisEnabled = toggleSakuraCheckbox.checked;
+            toggleSakuraEmojis(); // 絵文字の表示/非表示を切り替える関数を呼び出す
+            saveSettings();
+        });
+
         fontSizeUpBtn.addEventListener('click', () => {
-            currentSize = Math.min(currentSize + 8, 120);
+            currentSize = Math.min(currentSize + 10, 360);
             sizeSlider.value = currentSize;
             updateTicker(true);
             saveSettings();
         });
         fontSizeDownBtn.addEventListener('click', () => {
-            currentSize = Math.max(currentSize - 8, 12);
+            currentSize = Math.max(currentSize - 5, 12);
             sizeSlider.value = currentSize;
-            updateTicker(true);
+            updateTicker();
             saveSettings();
         });
 
@@ -1187,7 +1332,7 @@
             tickerText.style.animationPlayState = 'running';
             // ブラウザタブ用アイコンを変更
             document.getElementById('favicon').href = PLAY_ICON_DATA_URL;
-            startSpeechSync(); // 読み上げ再開
+            syncSpeechWithAnimation();
         });
 
         pauseBtn.addEventListener('click', () => {
@@ -1229,12 +1374,23 @@
 
         // Service Workerの登録
         if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./sw.js').then(registration => {
+            window.addEventListener('load', async () => {
+                try {
+                    const registration = await navigator.serviceWorker.register('./sw.js');
                     console.log('ServiceWorker registration successful with scope: ', registration.scope);
-                }, err => {
+
+                    // バックグラウンド同期の許可をリクエスト
+                    if ('permissions' in navigator && 'periodicSync' in registration) {
+                        const status = await navigator.permissions.query({
+                            name: 'periodic-background-sync',
+                        });
+                        if (status.state === 'granted') {
+                            console.log('バックグラウンド同期が許可されました。');
+                        }
+                    }
+                } catch (err) {
                     console.log('ServiceWorker registration failed: ', err);
-                });
+                }
             });
         }
     </script>
