@@ -268,6 +268,10 @@
         <p style="font-size: 0.8em; color: #666; margin-top: -8px; margin-bottom: 10px;">0.5 (遅い) 〜 2.0 (速い)</p>
 
 
+        <label for="speech-pitch-slider">読み上げのピッチ:</label>
+        <input type="range" id="speech-pitch-slider" min="0.5" max="2" step="0.1" value="1.2">
+        <p style="font-size: 0.8em; color: #666; margin-top: -8px; margin-bottom: 10px;">0.5 (低い) 〜 2.0 (高い)</p>
+
         <div class="button-group">
             <button id="zoom-in-btn">＋コントローラー拡大</button>
             <button id="zoom-out-btn">−コントローラー縮小</button>
@@ -463,7 +467,7 @@
         let currentTextColor = textColorPicker.value;
         let currentBgColor = bgColorPicker.value;
         let currentSpeechRate = parseFloat(speechRateSlider.value);
-        let currentPosition = 'bottom';
+        let currentSpeechPitch = 1.2; // 初期値を追加
         let currentWindowBgColor = windowBgColorPicker.value;
         let areSakuraEmojisEnabled = false; // 初期状態: 絵文字を非表示        
 
@@ -472,6 +476,7 @@
         let isSpeechOn = false;
         let currentUtterance = null; // 現在読み上げ中のUtteranceを保持
         let speechQueue = []; // 読み上げ待ちのテキストキュー
+        const speechPitchSlider = document.getElementById('speech-pitch-slider'); // スライダー要素を取得
         let speakingIndex = 0; // 現在読み上げているテキストのインデックス
 
         // テキスト分割用の正規表現（RSSタイトルや手動入力の区切りに使う）
@@ -500,7 +505,7 @@
                     tickerContainer.style.borderTop = '1px solid #ddd';
                     tickerContainer.style.borderBottom = '1px solid #ddd';
                     break;
-                case 'bottom':
+                  case 'bottom':
                 default:
                     tickerContainer.style.bottom = '0';
                     tickerContainer.style.borderTop = '1px solid #ddd';
@@ -822,12 +827,11 @@
 
             currentUtterance = new SpeechSynthesisUtterance(text);
             const voices = window.speechSynthesis.getVoices();
-            const femaleVoice = voices.find(v => v.lang.startsWith('ja') && (v.name.includes('Female') || v.name.includes('女性') || v.name.includes('Haruka') || v.name.includes('Google 日本語')));
+            const femaleVoice = voices.find(v => v.lang.startsWith('ja') && (v.name.includes('Female') || v.name.includes('女性') || v.name.includes('Haruka') || v.name.includes('Google 日本語'))); // 女性の声を探す
             currentUtterance.voice = femaleVoice || voices.find(v => v.lang.startsWith('ja'));
             currentUtterance.rate = currentSpeechRate;
-            currentUtterance.pitch = VOICE_PITCH;
+            currentUtterance.pitch = currentSpeechPitch; // ピッチ設定を反映
             currentUtterance.volume = VOICE_VOLUME;
-
             currentUtterance.onend = () => {
                 //console.log(`Finished speaking: "${text}"`);
                 currentUtterance = null;
@@ -1027,6 +1031,7 @@
         const STORAGE_KEY = 'teropTickerSettings';
 
         /**
+         *
          * 現在の設定をローカルストレージに保存する関数。
          */
         function saveSettings() {
@@ -1044,8 +1049,9 @@
                 controllerWidth: controller.style.width,
                 controllerHeight: controller.style.height,
                 isControllerVisible: controllerVisible,
-                isRssAutoUpdating: isRssAutoUpdating,                areSakuraEmojisEnabled: areSakuraEmojisEnabled,
-
+                isRssAutoUpdating: isRssAutoUpdating,
+                areSakuraEmojisEnabled: areSakuraEmojisEnabled,
+                speechPitch: currentSpeechPitch,
                 speechRate: currentSpeechRate,
                 tickerPosition: currentPosition,
                 windowBgColor: currentWindowBgColor
@@ -1069,6 +1075,7 @@
             bgColorPicker.value = settings.bgColor;
             rssUrlInput.value = settings.rssUrl;
             speechRateSlider.value = settings.speechRate !== undefined ? settings.speechRate : 1;
+            speechPitchSlider.value = settings.speechPitch !== undefined ? settings.speechPitch : 1.2; // ピッチの読み込み
             areSakuraEmojisEnabled = settings.areSakuraEmojisEnabled !== undefined ? settings.areSakuraEmojisEnabled : false;
             windowBgColorPicker.value = settings.windowBgColor || '#f5f5f5';
 
@@ -1081,6 +1088,7 @@
             currentBgColor = settings.bgColor;
             tickerContainer.style.backgroundColor = currentBgColor;
             currentSpeechRate = parseFloat(speechRateSlider.value);
+            currentSpeechPitch = parseFloat(speechPitchSlider.value); // ピッチの読み込み
             currentWindowBgColor = windowBgColorPicker.value;
 
             document.body.style.backgroundColor = currentWindowBgColor;
@@ -1135,6 +1143,7 @@
             bgColorPicker.value = '#ffffff';
             rssUrlInput.value = '';
             speechRateSlider.value = 1;
+            speechPitchSlider.value = 1.2;
             windowBgColorPicker.value = '#f5f5f5';
 
             currentSpeed = 0;
@@ -1146,6 +1155,7 @@
             currentBgColor = '#ffffff';
             tickerContainer.style.backgroundColor = currentBgColor;
             currentSpeechRate = 1;
+            currentSpeechPitch = 1.2;
             currentWindowBgColor = '#f5f5f5';
             document.body.style.backgroundColor = currentWindowBgColor;
 
@@ -1155,7 +1165,7 @@
             controller.style.left = '20px';
             controller.style.top = '20px';
             controller.style.width = '400px';
-            controller.style.height = 'auto';
+            controller.style.height = '550px'; /* ハンドルが消えないように固定の高さを設定 */
             updateControllerFontSize(400);
 
             controllerVisible = true;
@@ -1343,6 +1353,14 @@
             stopSpeech(); // 読み上げ一時停止
         });
 
+        // 読み上げピッチスライダーの変更を監視
+        speechPitchSlider.addEventListener('input', (e) => {
+            currentSpeechPitch = parseFloat(e.target.value); // 値を更新
+            if (currentUtterance) {
+                currentUtterance.pitch = currentSpeechPitch; // 読み上げ中のピッチを即時反映
+            }
+            saveSettings(); // 設定を保存
+        });
         restartBtn.addEventListener('click', async () => {
             console.log("最初から表示ボタンが押されました。");
             isTickerPaused = false;
