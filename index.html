@@ -1,0 +1,1242 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <link rel="manifest" href="./manifest.json">
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RSSテロップ表示ツール</title>
+    <!-- PWA (Progressive Web App) 対応のための設定 -->
+    <meta name="theme-color" content="#007bff"/>
+    <link rel="manifest" href="./manifest.json">
+    <!-- ブラウザタブ用の動的アイコン -->
+    <link id="favicon" rel="icon" type="image/svg+xml" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect x="20" y="10" width="25" height="80" fill="gray"/><rect x="55" y="10" width="25" height="80" fill="gray"/></svg>'>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden; /* テロップがはみ出さないように */
+            font-family: sans-serif;
+            background-color: #f5f5f5; /* 背景色を追加 */
+        }
+
+        #ticker-container {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            overflow: hidden;
+            white-space: nowrap;
+            box-sizing: border-box;
+            background-color: #ffffff; /* デフォルトのテロップ背景色 */
+            color: #222222; /* デフォルトのテロップ文字色 */
+            padding: 5px 0; /* 上下パディングを追加 */
+            z-index: 999; /* 他の要素の上に表示 */
+            border-top: 1px solid #ddd;
+        }
+
+        #ticker-text {
+            display: inline-block;
+            font-size: 32px;
+            font-weight: 400;
+            animation: scroll-left linear infinite; /* アニメーション時間をJSで設定 */
+            padding-left: 100%; /* 初期表示を画面外からにする */
+        }
+
+        @keyframes scroll-left {
+            0% { transform: translateX(0%); }
+            100% { transform: translateX(-100%); }
+        }
+
+        #controller {
+            position: absolute; /* 初期値をabsoluteに変更 */
+            top: 20px;
+            left: 20px;
+            width: 400px;
+            min-width: 250px;
+            min-height: 200px;
+            background: #f0f0f0;
+            border: 1px solid #ccc;
+            border-radius: 8px;
+            padding: 15px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+            z-index: 1000; /* テロップの上に表示 */
+            resize: both; /* リサイズを許可 */
+            overflow: auto; /* 内容がはみ出したらスクロールバー */
+            display: block; /* デフォルトで表示 */
+            font-size: 14px; /* ベースのフォントサイズ (JSで動的に変更) */
+            box-sizing: border-box;
+        }
+
+        #controller.dragging {
+            cursor: grabbing;
+        }
+
+        #controller h3 {
+            margin-top: 0;
+            font-size: 1.2em; /* 相対単位 */
+            color: #333;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+        }
+
+        #controller label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #555;
+            font-size: 1em; /* 相対単位 */
+        }
+
+        #controller input[type="text"],
+        #controller input[type="number"],
+        #controller select,
+        #controller textarea {
+            width: calc(100% - 12px);
+            padding: 0.6em; /* 相対単位 */
+            margin-bottom: 0.8em; /* 相対単位 */
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+            font-size: 1em; /* 相対単位 */
+        }
+
+        #controller input[type="color"] {
+            width: 80px;
+            height: 30px;
+            border: none;
+            padding: 0;
+            vertical-align: middle;
+            margin-bottom: 10px; /* 固定 */
+        }
+
+        #controller button {
+            background-color: #007bff;
+            color: white;
+            padding: 0.6em 1em; /* 相対単位 */
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1em; /* 相対単位 */
+            transition: background-color 0.2s ease;
+            margin-right: 0.5em; /* 相対単位 */
+            margin-bottom: 0.5em; /* 相対単位 */
+        }
+
+        #controller button:hover {
+            background-color: #0056b3;
+        }
+
+        #controller button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+
+        #controller .button-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.8em; /* 相対単位 */
+            margin-bottom: 1em; /* 相対単位 */
+        }
+
+        .preview-text {
+            margin-top: 1.2em; /* 相対単位 */
+            padding: 0.8em; /* 相対単位 */
+            border: 1px dashed #aaa;
+            background-color: #e9e9e9;
+            font-size: 1.1em; /* 相対単位 */
+            text-align: center;
+            color: #333;
+            border-radius: 4px;
+        }
+
+        /* 画面上部の設定表示/非表示ボタン */
+        #toggle-controller-btn {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            z-index: 1001; /* コントローラーよりもさらに上 */
+            padding: 6px 16px;
+            font-size: 16px;
+            border-radius: 8px;
+            background: #fff;
+            border: 1px solid #ccc;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        /* マニュアルポップアップのスタイル */
+        .modal {
+            display: none; /* デフォルトで非表示 */
+            position: fixed; /* 画面全体を覆う */
+            z-index: 2000; /* 最前面に表示 */
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto; /* 内容がはみ出したらスクロール可能に */
+            background-color: rgba(0,0,0,0.7); /* 半透明の黒い背景 */
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-content {
+            background-color: #fefefe;
+            margin: 5% auto; /* 上下に少し余白を持たせる */
+            padding: 25px;
+            border: 1px solid #888;
+            border-radius: 10px;
+            width: 80%; /* 幅を調整 */
+            max-width: 700px; /* 最大幅を設定 */
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            position: relative;
+            animation-name: animatetop;
+            animation-duration: 0.4s;
+            max-height: 90vh; /* 縦長になりすぎないように */
+            overflow-y: auto; /* 内容が縦長になったらスクロール */
+        }
+
+        @keyframes animatetop {
+            from {top: -300px; opacity: 0}
+            to {top: 0; opacity: 1}
+        }
+
+        .close-button {
+            color: #aaa;
+            float: right;
+            font-size: 30px;
+            font-weight: bold;
+            position: absolute;
+            top: 10px;
+            right: 20px;
+        }
+
+        .close-button:hover,
+        .close-button:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+        .modal-content h4 {
+            color: #007bff;
+            margin-top: 20px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 5px;
+            font-size: 1.1em;
+        }
+        .modal-content ul {
+            padding-left: 20px;
+        }
+        .modal-content li {
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div id="ticker-container">
+        <span id="ticker-text">RSSフィードから読み込まれた情報、または手動で入力されたテキストがここに表示されます。</span>
+    </div>
+
+    <button id="toggle-controller-btn">⚙️ 設定表示/非表示</button>
+
+    <div id="controller">
+        <h3>テロップ設定パネル</h3>
+
+        <div class="button-group">
+            <button id="play-btn">▶️ 再生</button>
+            <button id="pause-btn">⏸️ 一時停止</button>
+            <button id="restart-btn">🔄 最初から表示</button>
+            <button id="manual-btn">📚 使用方法</button>
+        </div>
+
+        <div class="button-group">
+            <button id="speech-on-btn">🔊 読み上げON</button>
+            <button id="speech-off-btn">🔇 読み上げOFF</button>
+        </div>
+
+        <label for="speech-rate-slider">読み上げ速度:</label>
+        <input type="range" id="speech-rate-slider" min="0.5" max="2" step="0.1" value="1">
+        <p style="font-size: 0.8em; color: #666; margin-top: -8px; margin-bottom: 10px;">0.5 (遅い) 〜 2.0 (速い)</p>
+
+
+        <div class="button-group">
+            <button id="zoom-in-btn">＋コントローラー拡大</button>
+            <button id="zoom-out-btn">−コントローラー縮小</button>
+        </div>
+
+        <div class="button-group">
+            <button id="font-size-up-btn">＋文字大</button>
+            <button id="font-size-down-btn">−文字小</button>
+        </div>
+
+        <label for="rss-url-input">RSSフィードURL (複数URLはカンマかスペースで区切る):</label>
+        <textarea id="rss-url-input" rows="3" placeholder="例: https://news.yahoo.co.jp/rss/topics/top-picks.xml, https://example.com/feed"></textarea>
+        <button id="load-rss-button">RSSを読み込む</button>
+        <button id="stop-rss-button">RSS自動更新停止</button>
+
+        <label for="ticker-input">手動入力テキスト:</label>
+        <textarea id="ticker-input" rows="3" placeholder="テロップに表示したいテキストを入力してください"></textarea>
+
+        <label for="speed-input">速度:</label>
+        <input type="number" id="speed-input" value="0" min="-1000" max="1000" step="10">
+        <p style="font-size: 0.8em; color: #666; margin-top: -8px; margin-bottom: 10px;">マイナス値にするとさらに遅くなります。</p>
+
+
+        <label for="size-slider">文字サイズ:</label>
+        <input type="range" id="size-slider" min="12" max="120" value="32">
+
+        <label for="font-select">フォント:</label>
+        <select id="font-select">
+            <option value="sans-serif">ゴシック体 (sans-serif)</option>
+            <option value="serif">明朝体 (serif)</option>
+            <option value="monospace">等幅 (monospace)</option>
+            <option value="Arial, sans-serif">Arial</option>
+            <option value="メイリオ, Meiryo, sans-serif">メイリオ</option>
+            <option value="游ゴシック, YuGothic, sans-serif">游ゴシック</option>
+            <option value="Times New Roman, serif">Times New Roman</option>
+        </select>
+
+        <label for="weight-slider">文字の太さ:</label>
+        <input type="range" id="weight-slider" min="100" max="900" step="100" value="400">
+
+        <label for="text-color-picker">文字色:</label>
+        <input type="color" id="text-color-picker" value="#222222">
+
+        <label for="bg-color-picker">背景色:</label>
+        <input type="color" id="bg-color-picker" value="#ffffff">
+
+        <div class="preview-text">プレビューテキスト</div>
+
+        <button id="reset-settings-btn" style="margin-top: 15px;">設定初期化</button>
+    </div>
+
+    <div id="manual-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-button">&times;</span>
+            <h3>📚 テロップ表示ツール - 使用方法</h3>
+
+            <h4>1. テロップの再生・一時停止・再開</h4>
+            <ul>
+                <li>「▶️ 再生」ボタンでテロップのスクロールを再開します。一時停止した場所から続きが再生されます。</li>
+                <li>「⏸️ 一時停止」ボタンでテロップのスクロールを停止します。</li>
+                <li>「🔄 **最初から表示**」ボタンで、テロップを停止し、再読み込みして最初から表示し直します。RSS自動更新が有効な場合は、最新のRSSフィードを再度読み込みます。</li>
+            </ul>
+
+            <h4>2. テロップの読み上げ (音声)</h4>
+            <ul>
+                <li>「🔊 読み上げON」ボタンでテロップの内容を音声で読み上げます。**テロップのスクロールに合わせて、自動で読み上げのタイミングが調整されます。**</li>
+                <li>「🔇 読み上げOFF」ボタンで読み上げを停止します。</li>
+                <li>「**読み上げ速度**」スライダーで、読み上げの速さを調整できます。</li>
+                <li>**テロップの再生・一時停止と連動して、読み上げも一時停止・再開されます。**</li>
+            </ul>
+
+            <h4>3. コントロールパネルの拡大・縮小</h4>
+            <ul>
+                <li>「＋コントローラー拡大」ボタンでこの操作パネルのサイズを大きくします。</li>
+                <li>「−コントローラー縮小」ボタンでこの操作パネルのサイズを小さくします。</li>
+                <li>パネルの右下をドラッグすることでもサイズ変更が可能です。**パネル内の文字やボタンも連動して大きくなります。**</li>
+            </ul>
+
+            <h4>4. テロップの文字サイズ変更</h4>
+            <ul>
+                <li>「＋文字大」ボタンでテロップの文字を大きくします。</li>
+                <li>「−文字小」ボタンでテロップの文字を小さくします。</li>
+                <li>「文字サイズ」スライダーをドラッグすることでも変更できます。</li>
+            </ul>
+
+            <h4>5. RSSフィードの表示</h4>
+            <ul>
+                <li>「RSSフィードURL」のテキストエリアに、表示したいRSSフィードのURLを入力します。複数ある場合は、カンマ (`,`) またはスペースで区切ってください。</li>
+                <li>「RSSを読み込む」ボタンをクリックすると、入力されたRSSフィードから最新のニュースが取得され、テロップとして表示されます。自動更新が開始されます。</li>
+                <li>「RSS自動更新停止」ボタンをクリックすると、RSSフィードの自動更新が止まり、手動入力が可能になります。</li>
+                <li>**RSSの自動更新は、現在のテロップが画面を一周するたびに行われます。**</li>
+                <li>**ヒント**: 読み込みを安定させるため、遅いサイトや頻繁にエラーが出るサイトは、他のRSSフィードとは分けて入力するか、手動入力を検討してください。</li>
+            </ul>
+
+            <h4>6. 手動入力テキストの表示</h4>
+            <ul>
+                <li>「手動入力テキスト」のテキストエリアに、自由に表示したいメッセージを入力します。</li>
+                <li>RSS自動更新が停止している間、このテキストがテロップとして流れます。</li>
+            </ul>
+
+            <h4>7. テロップの速度調整</h4>
+            <ul>
+                <li>「速度」入力欄に数値を入力します。</li>
+                <li>「0」が標準速度です。</li>
+                <li>プラスの値を大きくするほどテロップが速く流れます。</li>
+                <li>マイナスの値を大きくするほどテロップがさらに遅く流れます。</li>
+                <li>**テロップの文字数に応じて自動的に最適な速度に調整されるようになりました。**</li>
+            </ul>
+
+            <h4>8. その他の表示設定</h4>
+            <ul>
+                <li>「フォント」のドロップダウンから、テロップのフォントを変更できます。</li>
+                <li>「文字の太さ」スライダーで、テロップの文字の太さを調整できます。</li>
+                <li>「文字色」カラーピッカーで、テロップの文字の色を変更できます。</li>
+                <li>「背景色」カラーピッカーで、テロップの背景の色を変更できます。</li>
+            </ul>
+
+            <h4>9. 設定の初期化・保存・表示/非表示</h4>
+            <ul>
+                <li>「設定初期化」ボタンで、すべての設定をデフォルトに戻します。</li>
+                <li>各設定は自動的にブラウザに保存されるため、次回アクセス時も同じ設定で利用できます。</li>
+                <li>左上の「⚙️ 設定表示/非表示」ボタンで、このコントロールパネルを隠したり表示したりできます。</li>
+                <li>コントロールパネルはドラッグで移動、右下をドラッグでサイズ変更が可能です。</li>
+            </ul>
+        </div>
+    </div>
+
+    <script>
+        // Google Apps Script (GAS) プロキシのURL
+        const GAS_PROXY_URL = 'https://script.google.com/macros/s/AKfycbzrvWwKI8q5InEHJaR1qKWGeJlZzHjRc2RUxdBvHmU9Raxl_FjM-kgOC1MyjGcgRs6M/exec';
+
+        // ブラウザタブ用の動的アイコン (Data URL)
+        const PLAY_ICON_DATA_URL = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><polygon points="20,10 80,50 20,90" fill="green"/></svg>';
+        const PAUSE_ICON_DATA_URL = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect x="20" y="10" width="25" height="80" fill="red"/><rect x="55" y="10" width="25" height="80" fill="red"/></svg>';
+
+        // DOM要素の取得
+        const tickerContainer = document.getElementById('ticker-container');
+        const tickerText = document.getElementById('ticker-text');
+        const controller = document.getElementById('controller');
+        const rssUrlInput = document.getElementById('rss-url-input');
+        const loadRssButton = document.getElementById('load-rss-button');
+        const stopRssButton = document.getElementById('stop-rss-button');
+        const tickerInput = document.getElementById('ticker-input');
+        const speedInput = document.getElementById('speed-input');
+        const sizeSlider = document.getElementById('size-slider');
+        const weightSlider = document.getElementById('weight-slider');
+        const previewText = controller.querySelector('.preview-text');
+        const fontSelect = document.getElementById('font-select');
+        const textColorPicker = document.getElementById('text-color-picker');
+        const bgColorPicker = document.getElementById('bg-color-picker');
+        const speechRateSlider = document.getElementById('speech-rate-slider');
+
+        // ボタン要素
+        const toggleControllerBtn = document.getElementById('toggle-controller-btn');
+        const playBtn = document.getElementById('play-btn');
+        const pauseBtn = document.getElementById('pause-btn');
+        const restartBtn = document.getElementById('restart-btn');
+        const speechOnBtn = document.getElementById('speech-on-btn');
+        const speechOffBtn = document.getElementById('speech-off-btn');
+        const zoomInBtn = document.getElementById('zoom-in-btn');
+        const zoomOutBtn = document.getElementById('zoom-out-btn');
+        const fontSizeUpBtn = document.getElementById('font-size-up-btn');
+        const fontSizeDownBtn = document.getElementById('font-size-down-btn');
+        const resetSettingsBtn = document.getElementById('reset-settings-btn');
+        const manualBtn = document.getElementById('manual-btn');
+        const manualModal = document.getElementById('manual-modal');
+        const closeButton = manualModal.querySelector('.close-button');
+
+        // 状態変数
+        let currentSpeed = parseInt(speedInput.value);
+        let currentSize = parseInt(sizeSlider.value);
+        let currentText = tickerInput.value;
+        let currentFont = fontSelect.value;
+        let currentWeight = parseInt(weightSlider.value);
+        let currentTextColor = textColorPicker.value;
+        let currentBgColor = bgColorPicker.value;
+        let currentSpeechRate = parseFloat(speechRateSlider.value);
+
+        let isRssAutoUpdating = false;
+        let isTickerPaused = false;
+        let isSpeechOn = false;
+        let currentUtterance = null; // 現在読み上げ中のUtteranceを保持
+        let speechQueue = []; // 読み上げ待ちのテキストキュー
+        let speakingIndex = 0; // 現在読み上げているテキストのインデックス
+
+        // テキスト分割用の正規表現（RSSタイトルや手動入力の区切りに使う）
+        // 🌸【...】🌸 のような形式や、 ◇ を区切りとする
+        const TEXT_SPLIT_REGEX = /(🌸【[^】]+】🌸|◇)/g;
+
+        /**
+         * コントローラーのフォントサイズを更新する関数。
+         * @param {number} baseWidth - コントローラーの現在の幅。
+         */
+        function updateControllerFontSize(baseWidth) {
+            const minWidth = 250;
+            const maxWidth = 800;
+            const minFontSize = 12;
+            const maxFontSize = 20;
+
+            let newFontSize;
+            if (baseWidth <= minWidth) {
+                newFontSize = minFontSize;
+            } else if (baseWidth >= maxWidth) {
+                newFontSize = maxFontSize;
+            } else {
+                newFontSize = minFontSize + (maxFontSize - minFontSize) * ((baseWidth - minWidth) / (maxWidth - minWidth));
+            }
+            
+            controller.style.fontSize = `${newFontSize}px`;
+        }
+
+        /**
+         * テロップの表示とアニメーションを更新する関数。
+         * @param {boolean} resetAnimation - アニメーションを最初からリセットするかどうか (restartボタン用)
+         */
+        function updateTicker(resetAnimation = false) {
+            tickerText.style.fontSize = `${currentSize}px`;
+            tickerText.style.fontFamily = currentFont;
+            tickerText.style.fontWeight = currentWeight;
+            tickerText.style.color = currentTextColor;
+            tickerContainer.style.backgroundColor = currentBgColor;
+
+            tickerText.textContent = currentText;
+
+            previewText.style.fontSize = `${currentSize}px`;
+            previewText.style.fontFamily = currentFont;
+            previewText.style.fontWeight = currentWeight;
+            previewText.style.color = currentTextColor;
+            previewText.style.backgroundColor = currentBgColor;
+            previewText.textContent = `サイズ: ${currentSize}px, 速度: ${currentSpeed}, 書体: ${currentFont}, 太さ: ${currentWeight}`;
+
+            if (resetAnimation) {
+                tickerText.style.animation = 'none';
+                tickerText.style.transform = 'translateX(0%)';
+                void tickerText.offsetWidth;
+            } else {
+                tickerText.style.animation = 'none';
+                void tickerText.offsetWidth;
+            }
+
+            const tickerTextWidth = tickerText.scrollWidth;
+            const viewportWidth = window.innerWidth;
+
+            const basePixelsPerSecond = 100; 
+
+            let speedMultiplier;
+            if (currentSpeed >= 0) {
+                speedMultiplier = 1 + (currentSpeed / 1000); 
+            } else {
+                speedMultiplier = 1 + (currentSpeed / 2000); 
+            }
+            speedMultiplier = Math.max(0.1, speedMultiplier);
+
+            const distanceToScroll = tickerTextWidth + viewportWidth;
+            let animationDuration = distanceToScroll / (basePixelsPerSecond * speedMultiplier);
+
+            animationDuration = Math.max(1, animationDuration);
+            animationDuration = Math.min(6000, animationDuration);
+
+            tickerText.style.animation = `scroll-left ${animationDuration}s linear infinite`;
+            tickerText.style.animationPlayState = isTickerPaused ? 'paused' : 'running';
+
+            // アニメーションの再開時に読み上げをリセット・開始
+            if (!isTickerPaused) {
+                // 新しいテキストの場合、または再開時に読み上げを最初から開始する場合
+                startSpeechSync();
+            } else {
+                // 停止時は読み上げも停止
+                stopSpeech();
+            }
+        }
+
+        /**
+         * RSSフィードを取得する関数。rss2jsonとGASプロキシをフォールバックとして使用。
+         */
+        async function fetchRssFeed(url) {
+            try {
+                const apiUrl = `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(url)}`;
+                const res = await fetch(apiUrl);
+                if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+                const data = await res.json();
+
+                if (data.items && data.items.length > 0) {
+                    return data.items.map(item => `🌸【${item.title}】🌸`);
+                } else {
+                    return [`💦RSS取得失敗 (データなし): ${url}`];
+                }
+            } catch (error) {
+                console.error('RSSフィードの読み込みエラー (rss2json):', error);
+                return [`💦RSS取得失敗 (rss2jsonエラー): ${url}`];
+            }
+        }
+
+        async function fetchRssFeedWithGasProxy(url) {
+            try {
+                const proxyUrl = `${GAS_PROXY_URL}?url=${encodeURIComponent(url)}`;
+                const response = await fetch(proxyUrl);
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const xmlText = await response.text();
+                const parser = new DOMParser();
+                const xmlDoc = parser.parseFromString(xmlText, "text/xml");
+
+                const items = xmlDoc.querySelectorAll('item');
+                const entries = xmlDoc.querySelectorAll('entry');
+
+                let feedTexts = [];
+                if (items.length > 0) {
+                    items.forEach(item => {
+                        const title = item.querySelector('title')?.textContent || '無題';
+                        feedTexts.push(`🌸【${title}】🌸`);
+                    });
+                } else if (entries.length > 0) {
+                    entries.forEach(entry => {
+                        const title = entry.querySelector('title')?.textContent || '無題';
+                        feedTexts.push(`🌸【${title}】🌸`);
+                    });
+                }
+                return feedTexts;
+            } catch (gasError) {
+                console.error('RSSフィードの読み込みエラー (GASプロキシ):', gasError);
+                return [`💦RSS取得失敗 (GASプロキシエラー): ${url}`];
+            }
+        }
+
+        /**
+         * 複数のRSSフィードを取得し、テロップに表示する関数。
+         * @param {boolean} isInitialLoad - 初回読み込みかどうか。
+         * @param {boolean} isRestartTriggered - 「最初から表示」ボタンが押されたか。
+         */
+        async function fetchAndDisplayMultipleRss(isInitialLoad = false, isRestartTriggered = false) {
+            const urls = rssUrlInput.value
+                .split(/[\s,]+/)
+                .map(u => u.trim())
+                .filter(u => u);
+
+            if (urls.length === 0) {
+                currentText = 'RSSフィードのURLを入力してください。';
+                tickerInput.value = currentText;
+                updateTicker(isRestartTriggered);
+                return;
+            }
+
+            if (isInitialLoad || isRestartTriggered) {
+                loadRssButton.disabled = true;
+                loadRssButton.textContent = '読み込み中...';
+            }
+
+            let allTexts = [];
+            for (const url of urls) {
+                let textsFromRss2json = await fetchRssFeed(url);
+                if (textsFromRss2json.length > 0 && !textsFromRss2json[0].includes('RSS取得失敗')) {
+                    allTexts = allTexts.concat(textsFromRss2json);
+                } else {
+                    let textsFromGas = await fetchRssFeedWithGasProxy(url);
+                    allTexts = allTexts.concat(textsFromGas);
+                }
+            }
+            const combinedText = allTexts.join(' ◇ ');
+
+            currentText = combinedText || 'RSSフィードから情報を取得できませんでした。URLを確認してください。';
+            tickerInput.value = currentText;
+            updateTicker(isRestartTriggered);
+
+            if (isInitialLoad || isRestartTriggered) {
+                loadRssButton.disabled = false;
+                loadRssButton.textContent = 'RSSを読み込む';
+            }
+        }
+
+        /**
+         * RSS自動更新を開始する関数。
+         */
+        function startRssAutoUpdates() {
+            if (isRssAutoUpdating) return;
+
+            isRssAutoUpdating = true;
+            loadRssButton.disabled = true;
+            loadRssButton.textContent = 'RSS自動更新中';
+            stopRssButton.disabled = false;
+            tickerInput.disabled = true;
+            console.log("RSS自動更新が有効になりました。");
+        }
+
+        /**
+         * RSS自動更新を停止する関数。
+         */
+        function stopRssUpdates() {
+            isRssAutoUpdating = false;
+            // Animation iteration listenerは継続しても良い（テロップが一周したこと自体は検知するため）
+            // 必要に応じて `tickerText.removeEventListener` を追加
+
+            loadRssButton.disabled = false;
+            loadRssButton.textContent = 'RSSを読み込む';
+            stopRssButton.disabled = true;
+            tickerInput.disabled = false;
+            alert('RSSフィードの自動更新を停止しました。');
+            console.log("RSS自動更新が停止しました。");
+        }
+
+        /**
+         * テロップが一周するたびにRSSを更新するリスナーを再設定する。
+         */
+        function setupAnimationIterationListener() {
+            if (tickerText.animation_iteration_listener) {
+                tickerText.removeEventListener('animationiteration', tickerText.animation_iteration_listener);
+            }
+
+            tickerText.animation_iteration_listener = () => {
+                if (isRssAutoUpdating) {
+                    console.log("animationiteration検出：テロップが一周しました。次のRSS更新を実行します。");
+                    fetchAndDisplayMultipleRss(false, true);
+                }
+            };
+            tickerText.addEventListener('animationiteration', tickerText.animation_iteration_listener);
+        }
+
+        setupAnimationIterationListener();
+
+
+        // --- 音声読み上げ同期機能 ---
+        let animationFrameId = null; // requestAnimationFrame ID
+        const VOICE_VOLUME = 1.0; // 読み上げ音量
+        const VOICE_PITCH = 1.2; // 読み上げピッチ
+
+        /**
+         * テキストを分割して読み上げキューに追加する
+         * @param {string} text - 読み上げる全体のテキスト
+         */
+        function prepareSpeechQueue(text) {
+            speechQueue = [];
+            speakingIndex = 0;
+            // 🌸【...】🌸 または ◇ で分割
+            const parts = text.split(TEXT_SPLIT_REGEX).filter(s => s.trim() !== '');
+
+            // 空の文字列やスペースのみの文字列を除外してキューに格納
+            parts.forEach(part => {
+                const trimmedPart = part.trim();
+                if (trimmedPart) {
+                    speechQueue.push(trimmedPart);
+                }
+            });
+            console.log("Speech queue prepared:", speechQueue);
+        }
+
+        /**
+         * 指定されたテキストを読み上げる
+         * @param {string} text - 読み上げるテキスト
+         */
+        function speakCurrentText(text) {
+            if (!window.speechSynthesis || !isSpeechOn || isTickerPaused) {
+                return;
+            }
+
+            // 現在読み上げ中のものがあればキャンセル
+            if (currentUtterance && window.speechSynthesis.speaking) {
+                window.speechSynthesis.cancel();
+            }
+
+            currentUtterance = new SpeechSynthesisUtterance(text);
+            const voices = window.speechSynthesis.getVoices();
+            const femaleVoice = voices.find(v => v.lang.startsWith('ja') && (v.name.includes('Female') || v.name.includes('女性') || v.name.includes('Haruka') || v.name.includes('Google 日本語')));
+            currentUtterance.voice = femaleVoice || voices.find(v => v.lang.startsWith('ja'));
+            currentUtterance.rate = currentSpeechRate;
+            currentUtterance.pitch = VOICE_PITCH;
+            currentUtterance.volume = VOICE_VOLUME;
+
+            currentUtterance.onend = () => {
+                console.log(`Finished speaking: "${text}"`);
+                currentUtterance = null;
+                // 必要に応じて次のテキストをキューから取り出すロジックを追加
+            };
+            currentUtterance.onerror = (event) => {
+                console.error('SpeechSynthesisUtterance.onerror', event);
+            };
+
+            window.speechSynthesis.speak(currentUtterance);
+            console.log(`Speaking: "${text}"`);
+        }
+
+        /**
+         * 読み上げの同期を開始する
+         */
+        function startSpeechSync() {
+            if (!isSpeechOn || isTickerPaused) {
+                stopSpeech(); // 読み上げOFFまたは一時停止中なら停止
+                return;
+            }
+
+            stopSpeech(); // 既存の読み上げと同期処理を停止
+
+            prepareSpeechQueue(currentText); // 新しいテキストでキューを準備
+            speakingIndex = 0; // 読み上げインデックスをリセット
+
+            if (speechQueue.length === 0) {
+                return;
+            }
+
+            const tickerRect = tickerText.getBoundingClientRect();
+            const viewportRight = window.innerWidth;
+
+            let lastSpokenIndex = -1; // 最後に読み上げたテキストのインデックス
+
+            function animateSpeech() {
+                if (isTickerPaused || !isSpeechOn) {
+                    stopSpeech(); // アニメーションが停止または読み上げOFFなら同期処理も停止
+                    return;
+                }
+
+                // テキスト要素がまだ存在しない、またはCSSアニメーションがまだ開始されていない場合
+                if (!tickerText || getComputedStyle(tickerText).animationPlayState === 'paused') {
+                    animationFrameId = requestAnimationFrame(animateSpeech); // 次のフレームで再試行
+                    return;
+                }
+
+                const currentTransform = getComputedStyle(tickerText).transform;
+                // currentTransformが'none'の場合、またはまだtranslateXが適用されていない場合はスキップ
+                if (currentTransform === 'none' || !currentTransform.includes('matrix(')) {
+                     animationFrameId = requestAnimationFrame(animateSpeech);
+                     return;
+                }
+
+                // translateXの値を取得
+                const matrix = new DOMMatrixReadOnly(currentTransform);
+                const currentX = matrix.m41; // translateXの値 (px)
+
+                let accumulatedWidth = 0;
+                for (let i = 0; i < speechQueue.length; i++) {
+                    // 各部分テキストの幅を正確に測定するため、一時的にspan要素を作成して測定
+                    const tempSpan = document.createElement('span');
+                    tempSpan.style.fontSize = tickerText.style.fontSize;
+                    tempSpan.style.fontFamily = tickerText.style.fontFamily;
+                    tempSpan.style.fontWeight = tickerText.style.fontWeight;
+                    tempSpan.style.whiteSpace = 'nowrap';
+                    tempSpan.style.position = 'absolute';
+                    tempSpan.style.visibility = 'hidden';
+                    tempSpan.textContent = speechQueue[i];
+                    document.body.appendChild(tempSpan);
+                    const partWidth = tempSpan.offsetWidth;
+                    document.body.removeChild(tempSpan);
+
+                    const textRightEdgeRelativeToStart = viewportRight + accumulatedWidth; // テキストの右端が画面に現れる位置の目安
+                    
+                    // 現在のスクロール位置とテキストの幅を比較し、読み上げをトリガー
+                    // (tickerTextのtransformがマイナス値として左に移動しているため、currentXは負の値)
+                    if (currentX + textRightEdgeRelativeToStart <= viewportRight + (partWidth * 0.2) && i > lastSpokenIndex) { // 画面に入ってきて、少し見えたら読み上げ開始 (調整可能)
+                        if (i < speechQueue.length) { // 範囲チェック
+                            speakCurrentText(speechQueue[i]);
+                            lastSpokenIndex = i;
+                        }
+                    }
+                    accumulatedWidth += partWidth;
+                    // 区切り文字の幅も考慮に入れる（目安）
+                    if (speechQueue[i+1] && speechQueue[i+1].includes('◇')) {
+                        accumulatedWidth += (tickerText.offsetWidth / currentText.length) * 2; // ◇の幅を適当に追加
+                    }
+                }
+                animationFrameId = requestAnimationFrame(animateSpeech);
+            }
+
+            // 初回の読み上げ開始
+            if (speechQueue.length > 0) {
+                // アニメーションが完全にリセットされた後に開始
+                setTimeout(() => {
+                    if (!isTickerPaused && isSpeechOn) {
+                        animationFrameId = requestAnimationFrame(animateSpeech);
+                    }
+                }, 100); // 少し遅延させて、テロップが画面外に出るのを待つ
+            }
+        }
+
+        /**
+         * 読み上げを停止する
+         */
+        function stopSpeech() {
+            if (window.speechSynthesis) {
+                window.speechSynthesis.cancel();
+            }
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
+            currentUtterance = null;
+        }
+
+        // --- イベントリスナー ---
+        loadRssButton.addEventListener('click', async () => {
+            stopRssUpdates();
+            await fetchAndDisplayMultipleRss(true);
+            startRssAutoUpdates();
+        });
+
+        stopRssButton.addEventListener('click', stopRssUpdates);
+
+        tickerInput.addEventListener('input', (e) => {
+            if (!isRssAutoUpdating) {
+                currentText = e.target.value;
+                updateTicker(true);
+            } else {
+                alert('RSS自動更新中は手動入力できません。自動更新を停止してください。');
+                e.target.value = currentText;
+            }
+        });
+
+        speedInput.addEventListener('input', (e) => {
+            currentSpeed = parseInt(e.target.value) || 0;
+            updateTicker();
+            saveSettings();
+        });
+
+        sizeSlider.addEventListener('input', (e) => {
+            currentSize = parseInt(e.target.value);
+            updateTicker();
+            saveSettings();
+        });
+
+        fontSelect.addEventListener('change', (e) => {
+            currentFont = e.target.value;
+            updateTicker();
+            saveSettings();
+        });
+
+        weightSlider.addEventListener('input', (e) => {
+            currentWeight = parseInt(e.target.value);
+            updateTicker();
+            saveSettings();
+        });
+
+        textColorPicker.addEventListener('input', (e) => {
+            currentTextColor = e.target.value;
+            updateTicker();
+            saveSettings();
+        });
+
+        bgColorPicker.addEventListener('input', (e) => {
+            currentBgColor = e.target.value;
+            tickerContainer.style.backgroundColor = currentBgColor;
+            updateTicker();
+            saveSettings();
+        });
+
+        speechRateSlider.addEventListener('input', (e) => {
+            currentSpeechRate = parseFloat(e.target.value);
+            if (currentUtterance) { // 読み上げ中の場合は、速度を即座に反映
+                currentUtterance.rate = currentSpeechRate;
+            }
+            saveSettings();
+        });
+
+        const STORAGE_KEY = 'teropTickerSettings';
+
+        /**
+         * 現在の設定をローカルストレージに保存する関数。
+         */
+        function saveSettings() {
+            const settings = {
+                speed: currentSpeed,
+                size: currentSize,
+                text: currentText,
+                font: currentFont,
+                weight: currentWeight,
+                textColor: currentTextColor,
+                bgColor: currentBgColor,
+                rssUrl: rssUrlInput.value,
+                controllerLeft: controller.style.left,
+                controllerTop: controller.style.top,
+                controllerWidth: controller.style.width,
+                controllerHeight: controller.style.height,
+                isControllerVisible: controllerVisible,
+                isRssAutoUpdating: isRssAutoUpdating,
+                speechRate: currentSpeechRate
+            };
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+        }
+
+        /**
+         * ローカルストレージから設定を読み込む関数。
+         */
+        function loadSettings() {
+            const settings = JSON.parse(localStorage.getItem(STORAGE_KEY));
+            if (!settings) return;
+
+            speedInput.value = settings.speed;
+            sizeSlider.value = settings.size;
+            tickerInput.value = settings.text;
+            fontSelect.value = settings.font;
+            weightSlider.value = settings.weight;
+            textColorPicker.value = settings.textColor;
+            bgColorPicker.value = settings.bgColor;
+            rssUrlInput.value = settings.rssUrl;
+            speechRateSlider.value = settings.speechRate !== undefined ? settings.speechRate : 1;
+
+            currentSpeed = settings.speed;
+            currentSize = settings.size;
+            currentText = settings.text;
+            currentFont = settings.font;
+            currentWeight = settings.weight;
+            currentTextColor = settings.textColor;
+            currentBgColor = settings.bgColor;
+            tickerContainer.style.backgroundColor = currentBgColor;
+            currentSpeechRate = parseFloat(speechRateSlider.value);
+
+            let savedLeft = parseFloat(settings.controllerLeft) || 20;
+            let savedTop = parseFloat(settings.controllerTop) || 20;
+            let savedWidth = parseFloat(settings.controllerWidth) || 400;
+            let savedHeight = parseFloat(settings.controllerHeight) || 200;
+
+            const minWidth = 250;
+            const minHeight = 200;
+
+            savedWidth = Math.max(savedWidth, minWidth);
+            savedHeight = Math.max(savedHeight, minHeight);
+
+            savedLeft = Math.max(0, Math.min(savedLeft, window.innerWidth - savedWidth - 20));
+            savedTop = Math.max(0, Math.min(savedTop, window.innerHeight - savedHeight - 20));
+
+            controller.style.left = `${savedLeft}px`;
+            controller.style.top = `${savedTop}px`;
+            controller.style.width = `${savedWidth}px`;
+            controller.style.height = `${savedHeight}px`;
+
+            updateControllerFontSize(savedWidth);
+
+            controllerVisible = settings.isControllerVisible !== undefined ? settings.isControllerVisible : true;
+            controller.style.display = controllerVisible ? 'block' : 'none';
+
+            isRssAutoUpdating = settings.isRssAutoUpdating || false;
+
+            updateTicker();
+        }
+
+        /**
+         * 設定を初期値に戻す関数。
+         */
+        function resetSettings() {
+            localStorage.removeItem(STORAGE_KEY);
+            speedInput.value = 0;
+            sizeSlider.value = 32;
+            tickerInput.value = 'RSSフィードから読み込まれた情報、または手動で入力されたテキストがここに表示されます。';
+            fontSelect.value = 'sans-serif';
+            weightSlider.value = 400;
+            textColorPicker.value = '#222222';
+            bgColorPicker.value = '#ffffff';
+            rssUrlInput.value = '';
+            speechRateSlider.value = 1;
+
+            currentSpeed = 0;
+            currentSize = 32;
+            currentText = tickerInput.value;
+            currentFont = 'sans-serif';
+            currentWeight = 400;
+            currentTextColor = '#222222';
+            currentBgColor = '#ffffff';
+            tickerContainer.style.backgroundColor = currentBgColor;
+            currentSpeechRate = 1;
+
+            controller.style.left = '20px';
+            controller.style.top = '20px';
+            controller.style.width = '400px';
+            controller.style.height = 'auto';
+            updateControllerFontSize(400);
+
+            controllerVisible = true;
+            controller.style.display = 'block';
+
+            // ブラウザタブ用アイコンを初期状態に戻す
+            document.getElementById('favicon').href = PAUSE_ICON_DATA_URL;
+
+            stopRssUpdates();
+            updateTicker(true);
+            stopSpeech(); // 初期化時に読み上げも停止
+            alert('設定を初期化しました。');
+        }
+
+        resetSettingsBtn.addEventListener('click', resetSettings);
+
+        let controllerVisible = true;
+        toggleControllerBtn.addEventListener('click', () => {
+            controllerVisible = !controllerVisible;
+            controller.style.display = controllerVisible ? 'block' : 'none';
+            saveSettings();
+        });
+
+        // ページロード時に設定読込とRSS更新のチェック
+        window.addEventListener('DOMContentLoaded', async () => {
+            loadSettings();
+            if (rssUrlInput.value.trim() && isRssAutoUpdating) {
+                await fetchAndDisplayMultipleRss(true);
+            } else {
+                updateTicker(true);
+            }
+        });
+
+        // --- コントローラーのドラッグとリサイズ ---
+        let isDragging = false;
+        let isResizing = false;
+        let offsetX = 0, offsetY = 0, startWidth = 0, startHeight = 0;
+        const resizeHandleSize = 20;
+
+        controller.addEventListener('mousedown', (e) => {
+            const rect = controller.getBoundingClientRect();
+
+            if (e.clientX > rect.right - resizeHandleSize && e.clientY > rect.bottom - resizeHandleSize) {
+                isResizing = true;
+                startWidth = rect.width;
+                startHeight = rect.height;
+                offsetX = e.clientX;
+                offsetY = e.clientY;
+                document.body.style.cursor = 'se-resize';
+                return;
+            }
+
+            if (e.target.closest('#controller input, #controller label, #controller textarea, #controller button, #controller select, #controller h3, #controller p')) {
+                return;
+            }
+
+            isDragging = true;
+            controller.classList.add('dragging');
+            offsetX = e.clientX - rect.left;
+            offsetY = e.clientY - rect.top;
+            document.body.style.cursor = 'move';
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                let newX = e.clientX - offsetX;
+                let newY = e.clientY - offsetY;
+
+                const maxX = window.innerWidth - controller.offsetWidth;
+                const maxY = window.innerHeight - controller.offsetHeight;
+                newX = Math.max(0, Math.min(newX, maxX));
+                newY = Math.max(0, Math.min(newY, maxY));
+
+                controller.style.left = `${newX}px`;
+                controller.style.top = `${newY}px`;
+            }
+            if (isResizing) {
+                let newWidth = startWidth + (e.clientX - offsetX);
+                let newHeight = startHeight + (e.clientY - offsetY);
+
+                const minWidth = 250;
+                const minHeight = 200;
+
+                newWidth = Math.max(newWidth, minWidth);
+                newHeight = Math.max(newHeight, minHeight);
+
+                newWidth = Math.min(newWidth, window.innerWidth - controller.offsetLeft - 10);
+                newHeight = Math.min(newHeight, window.innerHeight - controller.offsetTop - 10);
+
+                controller.style.width = `${newWidth}px`;
+                controller.style.height = `${newHeight}px`;
+
+                updateControllerFontSize(newWidth);
+            }
+        });
+
+        document.addEventListener('mouseup', () => {
+            if (isDragging || isResizing) {
+                isDragging = false;
+                isResizing = false;
+                controller.classList.remove('dragging');
+                document.body.style.cursor = '';
+                saveSettings();
+            }
+        });
+
+        controller.addEventListener('dragstart', (e) => {
+            e.preventDefault();
+        });
+
+        zoomInBtn.addEventListener('click', () => {
+            const currentWidth = parseInt(controller.style.width) || controller.offsetWidth;
+            const currentHeight = parseInt(controller.style.height) || controller.offsetHeight;
+            
+            let newWidth = Math.min(currentWidth + 50, window.innerWidth - controller.offsetLeft - 10);
+            let newHeight = Math.min(currentHeight + 30, window.innerHeight - controller.offsetTop - 10);
+
+            controller.style.width = `${newWidth}px`;
+            controller.style.height = `${newHeight}px`;
+            updateControllerFontSize(newWidth);
+            saveSettings();
+        });
+
+        zoomOutBtn.addEventListener('click', () => {
+            const currentWidth = parseInt(controller.style.width) || controller.offsetWidth;
+            const currentHeight = parseInt(controller.style.height) || controller.offsetHeight;
+            
+            let newWidth = Math.max(currentWidth - 50, 250);
+            let newHeight = Math.max(currentHeight - 30, 200);
+
+            controller.style.width = `${newWidth}px`;
+            controller.style.height = `${newHeight}px`;
+            updateControllerFontSize(newWidth);
+            saveSettings();
+        });
+
+        speechOnBtn.addEventListener('click', () => {
+            isSpeechOn = true;
+            if (!isTickerPaused) {
+                startSpeechSync(); // 読み上げ開始
+            }
+        });
+
+        speechOffBtn.addEventListener('click', () => {
+            isSpeechOn = false;
+            stopSpeech(); // 読み上げ停止
+        });
+
+        fontSizeUpBtn.addEventListener('click', () => {
+            currentSize = Math.min(currentSize + 8, 120);
+            sizeSlider.value = currentSize;
+            updateTicker(true);
+            saveSettings();
+        });
+        fontSizeDownBtn.addEventListener('click', () => {
+            currentSize = Math.max(currentSize - 8, 12);
+            sizeSlider.value = currentSize;
+            updateTicker(true);
+            saveSettings();
+        });
+
+        playBtn.addEventListener('click', () => {
+            isTickerPaused = false;
+            tickerText.style.animationPlayState = 'running';
+            // ブラウザタブ用アイコンを変更
+            document.getElementById('favicon').href = PLAY_ICON_DATA_URL;
+            startSpeechSync(); // 読み上げ再開
+        });
+
+        pauseBtn.addEventListener('click', () => {
+            isTickerPaused = true;
+            tickerText.style.animationPlayState = 'paused';
+            // ブラウザタブ用アイコンを変更
+            document.getElementById('favicon').href = PAUSE_ICON_DATA_URL;
+            stopSpeech(); // 読み上げ一時停止
+        });
+
+        restartBtn.addEventListener('click', async () => {
+            console.log("最初から表示ボタンが押されました。");
+            isTickerPaused = false;
+            // ブラウザタブ用アイコンを変更
+            document.getElementById('favicon').href = PLAY_ICON_DATA_URL;
+            stopSpeech(); // 現在の読み上げと同期を停止
+
+            if (isRssAutoUpdating && rssUrlInput.value.trim()) {
+                await fetchAndDisplayMultipleRss(false, true);
+            } else {
+                updateTicker(true); // trueを渡してアニメーションをリセット
+            }
+            console.log("テロップが最初から再開されました。");
+        });
+
+        manualBtn.addEventListener('click', () => {
+            manualModal.style.display = 'flex';
+        });
+
+        closeButton.addEventListener('click', () => {
+            manualModal.style.display = 'none';
+        });
+
+        window.addEventListener('click', (e) => {
+            if (e.target === manualModal) {
+                manualModal.style.display = 'none';
+            }
+        });
+
+        // Service Workerの登録
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js').then(registration => {
+                    console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                }, err => {
+                    console.log('ServiceWorker registration failed: ', err);
+                });
+            });
+        }
+    </script>
+</body>
+</html>
