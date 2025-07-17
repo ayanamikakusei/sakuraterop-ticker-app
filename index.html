@@ -248,7 +248,7 @@
         <div class="button-group">
             <button id="play-btn">▶️ 再生</button>
             <button id="pause-btn">⏸️ 一時停止</button>
-            <button id="restart-btn">🔄 最初から表示</button>
+            <button id="restart-btn">🔄 リロード</button>
             <button id="manual-btn">📚 使用方法</button>
         </div>
 
@@ -267,10 +267,10 @@
         <input type="range" id="speech-rate-slider" min="0.5" max="2" step="0.1" value="1">
         <p style="font-size: 0.8em; color: #666; margin-top: -8px; margin-bottom: 10px;">0.5 (遅い) 〜 2.0 (速い)</p>
 
-
         <label for="speech-pitch-slider">読み上げのピッチ:</label>
-        <input type="range" id="speech-pitch-slider" min="0.5" max="2" step="0.1" value="1.2">
+        <input type="range" id="speech-pitch-slider" min="0.5" max="2" step="0.1" value="1">
         <p style="font-size: 0.8em; color: #666; margin-top: -8px; margin-bottom: 10px;">0.5 (低い) 〜 2.0 (高い)</p>
+
 
         <div class="button-group">
             <button id="zoom-in-btn">＋コントローラー拡大</button>
@@ -288,8 +288,8 @@
         <button id="stop-rss-button">RSS自動更新停止</button>
 
         <label for="ticker-input">手動入力テキスト:</label>
-        <textarea id="ticker-input" rows="3" placeholder="テロップに表示したいテキストを入力してください"></textarea>
-
+        <textarea id="ticker-input" rows="3" placeholder="テロップに表示したいテキストを入力してください" style="margin-bottom: 0.3em;"></textarea>
+        <button id="clear-ticker-input-btn" style="margin-bottom: 0.8em;">テキストをクリア</button>
         <label for="speed-input">速度:</label>
         <input type="number" id="speed-input" value="0" min="-1000" max="1000" step="10">
         <p style="font-size: 0.8em; color: #666; margin-top: -8px; margin-bottom: 10px;">マイナス値にするとさらに遅くなります。</p>
@@ -345,7 +345,7 @@
             <ul>
                 <li>「▶️ 再生」ボタンでテロップのスクロールを再開します。一時停止した場所から続きが再生されます。</li>
                 <li>「⏸️ 一時停止」ボタンでテロップのスクロールを停止します。</li>
-                <li>「🔄 **最初から表示**」ボタンで、テロップを停止し、再読み込みして最初から表示し直します。RSS自動更新が有効な場合は、最新のRSSフィードを再度読み込みます。</li>
+                <li>「🔄 **リロード**」ボタンで、現在のテロップを最初から表示し直します。RSS自動更新が有効な場合は、最新のRSSフィードを再度読み込みます。</li>
             </ul>
 
             <h4>2. テロップの読み上げ (音声)</h4>
@@ -438,6 +438,7 @@
         const textColorPicker = document.getElementById('text-color-picker');
         const bgColorPicker = document.getElementById('bg-color-picker');
         const speechRateSlider = document.getElementById('speech-rate-slider');
+        const speechPitchSlider = document.getElementById('speech-pitch-slider');
 
         // ボタン要素
         const toggleControllerBtn = document.getElementById('toggle-controller-btn');
@@ -458,6 +459,8 @@
         const toggleSakuraBtn = document.getElementById('toggle-sakura-btn');
         const closeButton = manualModal.querySelector('.close-button');
 
+        const clearTickerInputBtn = document.getElementById('clear-ticker-input-btn');
+
         // 状態変数
         let currentSpeed = parseInt(speedInput.value);
         let currentSize = parseInt(sizeSlider.value);
@@ -467,7 +470,8 @@
         let currentTextColor = textColorPicker.value;
         let currentBgColor = bgColorPicker.value;
         let currentSpeechRate = parseFloat(speechRateSlider.value);
-        let currentSpeechPitch = 1.2; // 初期値を追加
+        let currentSpeechPitch = parseFloat(speechPitchSlider.value);
+        let currentPosition = 'bottom';
         let currentWindowBgColor = windowBgColorPicker.value;
         let areSakuraEmojisEnabled = false; // 初期状態: 絵文字を非表示        
 
@@ -476,7 +480,6 @@
         let isSpeechOn = false;
         let currentUtterance = null; // 現在読み上げ中のUtteranceを保持
         let speechQueue = []; // 読み上げ待ちのテキストキュー
-        const speechPitchSlider = document.getElementById('speech-pitch-slider'); // スライダー要素を取得
         let speakingIndex = 0; // 現在読み上げているテキストのインデックス
 
         // テキスト分割用の正規表現（RSSタイトルや手動入力の区切りに使う）
@@ -505,7 +508,7 @@
                     tickerContainer.style.borderTop = '1px solid #ddd';
                     tickerContainer.style.borderBottom = '1px solid #ddd';
                     break;
-                  case 'bottom':
+                case 'bottom':
                 default:
                     tickerContainer.style.bottom = '0';
                     tickerContainer.style.borderTop = '1px solid #ddd';
@@ -520,9 +523,9 @@
          */
         function updateControllerFontSize(baseWidth) {
             const minWidth = 250;
-            const maxWidth = 800;
+            const maxWidth = 3600; // 最大幅をさらに拡大 (約3倍)
             const minFontSize = 12;
-            const maxFontSize = 20;
+            const maxFontSize = 72; // 最大フォントサイズも連動して拡大
 
             let newFontSize;
             if (baseWidth <= minWidth) {
@@ -558,8 +561,10 @@
             previewText.textContent = `サイズ: ${currentSize}px, 速度: ${currentSpeed}, 書体: ${currentFont}, 太さ: ${currentWeight}`;
 
             if (resetAnimation) {
-                tickerText.style.transform = 'translate3d(0, 0, 0)';
-                tickerText.style.animation = ''; // アニメーションをリセット
+                // アニメーションを強制的にリスタートさせるためのトリック
+                // 一度アニメーションを`none`に設定し、DOMの再描画（リフロー）をトリガーしてから再設定する
+                tickerText.style.animation = 'none';
+                void tickerText.offsetWidth; // リフローをトリガー
             }
             applyTickerAnimation();
         }
@@ -827,11 +832,12 @@
 
             currentUtterance = new SpeechSynthesisUtterance(text);
             const voices = window.speechSynthesis.getVoices();
-            const femaleVoice = voices.find(v => v.lang.startsWith('ja') && (v.name.includes('Female') || v.name.includes('女性') || v.name.includes('Haruka') || v.name.includes('Google 日本語'))); // 女性の声を探す
+            const femaleVoice = voices.find(v => v.lang.startsWith('ja') && (v.name.includes('Female') || v.name.includes('女性') || v.name.includes('Haruka') || v.name.includes('ヒカリ') || v.name.includes('Google 日本語')));
             currentUtterance.voice = femaleVoice || voices.find(v => v.lang.startsWith('ja'));
             currentUtterance.rate = currentSpeechRate;
-            currentUtterance.pitch = currentSpeechPitch; // ピッチ設定を反映
+            currentUtterance.pitch = currentSpeechPitch; // スライダーの値を反映
             currentUtterance.volume = VOICE_VOLUME;
+
             currentUtterance.onend = () => {
                 //console.log(`Finished speaking: "${text}"`);
                 currentUtterance = null;
@@ -959,6 +965,13 @@
 
         stopRssButton.addEventListener('click', stopRssUpdates);
 
+        clearTickerInputBtn.addEventListener('click', () => {
+            tickerInput.value = '';
+            currentText = '';
+            updateTicker(true);
+            saveSettings();
+        });
+
         tickerInput.addEventListener('input', (e) => {
                 if (!isRssAutoUpdating) {
                     currentText = processInputText(e.target.value); // 入力テキストを処理
@@ -1028,10 +1041,17 @@
             saveSettings();
         });
 
+        speechPitchSlider.addEventListener('input', (e) => {
+            currentSpeechPitch = parseFloat(e.target.value);
+            if (currentUtterance) { // 読み上げ中の場合は、速度を即座に反映
+                currentUtterance.pitch = currentSpeechPitch;
+            }
+            saveSettings();
+        });
+
         const STORAGE_KEY = 'teropTickerSettings';
 
         /**
-         *
          * 現在の設定をローカルストレージに保存する関数。
          */
         function saveSettings() {
@@ -1049,10 +1069,10 @@
                 controllerWidth: controller.style.width,
                 controllerHeight: controller.style.height,
                 isControllerVisible: controllerVisible,
-                isRssAutoUpdating: isRssAutoUpdating,
-                areSakuraEmojisEnabled: areSakuraEmojisEnabled,
-                speechPitch: currentSpeechPitch,
+                isRssAutoUpdating: isRssAutoUpdating,                areSakuraEmojisEnabled: areSakuraEmojisEnabled,
+
                 speechRate: currentSpeechRate,
+                speechPitch: currentSpeechPitch,
                 tickerPosition: currentPosition,
                 windowBgColor: currentWindowBgColor
             };
@@ -1075,7 +1095,7 @@
             bgColorPicker.value = settings.bgColor;
             rssUrlInput.value = settings.rssUrl;
             speechRateSlider.value = settings.speechRate !== undefined ? settings.speechRate : 1;
-            speechPitchSlider.value = settings.speechPitch !== undefined ? settings.speechPitch : 1.2; // ピッチの読み込み
+            speechPitchSlider.value = settings.speechPitch !== undefined ? settings.speechPitch : 1;
             areSakuraEmojisEnabled = settings.areSakuraEmojisEnabled !== undefined ? settings.areSakuraEmojisEnabled : false;
             windowBgColorPicker.value = settings.windowBgColor || '#f5f5f5';
 
@@ -1088,7 +1108,7 @@
             currentBgColor = settings.bgColor;
             tickerContainer.style.backgroundColor = currentBgColor;
             currentSpeechRate = parseFloat(speechRateSlider.value);
-            currentSpeechPitch = parseFloat(speechPitchSlider.value); // ピッチの読み込み
+            currentSpeechPitch = parseFloat(speechPitchSlider.value);
             currentWindowBgColor = windowBgColorPicker.value;
 
             document.body.style.backgroundColor = currentWindowBgColor;
@@ -1143,7 +1163,7 @@
             bgColorPicker.value = '#ffffff';
             rssUrlInput.value = '';
             speechRateSlider.value = 1;
-            speechPitchSlider.value = 1.2;
+            speechPitchSlider.value = 1;
             windowBgColorPicker.value = '#f5f5f5';
 
             currentSpeed = 0;
@@ -1155,7 +1175,7 @@
             currentBgColor = '#ffffff';
             tickerContainer.style.backgroundColor = currentBgColor;
             currentSpeechRate = 1;
-            currentSpeechPitch = 1.2;
+            currentSpeechPitch = 1;
             currentWindowBgColor = '#f5f5f5';
             document.body.style.backgroundColor = currentWindowBgColor;
 
@@ -1165,7 +1185,10 @@
             controller.style.left = '20px';
             controller.style.top = '20px';
             controller.style.width = '400px';
-            controller.style.height = '550px'; /* ハンドルが消えないように固定の高さを設定 */
+            // 'auto'だとリサイズハンドルが効かなくなる問題の修正。インラインスタイルを削除して初期状態に戻す。
+            controller.style.removeProperty('height');
+            // コントローラーの高さが画面内に収まるように調整
+            controller.style.maxHeight = `calc(100vh - 40px)`; // 上下に20pxずつのマージン
             updateControllerFontSize(400);
 
             controllerVisible = true;
@@ -1280,27 +1303,31 @@
 
         zoomInBtn.addEventListener('click', () => {
             const currentWidth = parseInt(controller.style.width) || controller.offsetWidth;
-            const currentHeight = parseInt(controller.style.height) || controller.offsetHeight;
             
-            let newWidth = Math.min(currentWidth + 50, window.innerWidth - controller.offsetLeft - 10);
-            let newHeight = Math.min(currentHeight + 30, window.innerHeight - controller.offsetTop - 10);
-
+            // 新しい幅を計算 (最大幅を超えないようにする)
+            let newWidth = Math.min(currentWidth + 50, 3600); // 最大幅をさらに拡大
+            
+            // コントローラーの幅を更新
             controller.style.width = `${newWidth}px`;
-            controller.style.height = `${newHeight}px`;
+            
+            // フォントサイズを更新
             updateControllerFontSize(newWidth);
+
             saveSettings();
         });
 
         zoomOutBtn.addEventListener('click', () => {
             const currentWidth = parseInt(controller.style.width) || controller.offsetWidth;
-            const currentHeight = parseInt(controller.style.height) || controller.offsetHeight;
             
+            // 新しい幅を計算 (最小幅を下回らないようにする)
             let newWidth = Math.max(currentWidth - 50, 250);
-            let newHeight = Math.max(currentHeight - 30, 200);
-
+            
+            // コントローラーの幅を更新
             controller.style.width = `${newWidth}px`;
-            controller.style.height = `${newHeight}px`;
+            
+            // フォントサイズを更新
             updateControllerFontSize(newWidth);
+
             saveSettings();
         });
 
@@ -1353,14 +1380,6 @@
             stopSpeech(); // 読み上げ一時停止
         });
 
-        // 読み上げピッチスライダーの変更を監視
-        speechPitchSlider.addEventListener('input', (e) => {
-            currentSpeechPitch = parseFloat(e.target.value); // 値を更新
-            if (currentUtterance) {
-                currentUtterance.pitch = currentSpeechPitch; // 読み上げ中のピッチを即時反映
-            }
-            saveSettings(); // 設定を保存
-        });
         restartBtn.addEventListener('click', async () => {
             console.log("最初から表示ボタンが押されました。");
             isTickerPaused = false;
